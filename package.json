@@ -1,0 +1,47 @@
+{
+  "name": "arty-the-miner",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Downloads report artifacts.",
+  "author": "Jordan Pratt <jpratt@mtroyal.ca>",
+  "license": "ISC",
+  "repository": "https://github.com/jpratt-mru/artifact-miner.git",
+  "homepage": "https://github.com/jpratt-mru/artifact-miner",
+  "bugs": "https://github.com/jpratt-mru/artifact-miner/issues",
+  "keywords": [
+    "probot",
+    "github",
+    "probot-app"
+  ],
+  "scripts": {
+    "dev": "nodemon",
+    "start": "node ./index.js"
+  },
+  "dependencies": {
+    "@octokit/app": "^4.2.1",
+    "@octokit/core": "^3.1.2",
+    "@octokit/rest": "^18.0.3",
+    "adm-zip": "^0.4.16",
+    "dotenv": "^8.2.0",
+    "file-base64": "^1.0.0",
+    "github-app": "^4.0.1",
+    "github-webhook-handler": "^1.0.0",
+    "jszip": "^3.5.0",
+    "node-fetch": "^2.6.0",
+    "superagent": "^6.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.0",
+    "smee-client": "^1.1.0"
+  },
+  "engines": {
+    "node": ">= 8.3.0"
+  },
+  "nodemonConfig": {
+    "exec": "npm start",
+    "watch": [
+      ".env",
+      "."
+    ]
+  }
+}
