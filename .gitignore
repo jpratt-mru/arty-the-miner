@@ -1,6 +1,9 @@
 submissions/
 .vscode/
+.data/
 noodle.js
+.data - Copy/
+
 
 # Logs
 logs
