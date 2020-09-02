@@ -1,217 +1,384 @@
 /* https://digitaldrummerj.me/node-download-zip-and-extract/ */
 
+/*
+
+IMPORTS
+
+*/
+
+// dotenv lets you put info in .env file and access as process.env.blah
 require("dotenv").config();
-const jszip = require("jszip");
+
+// logging is good
+const winston = require("winston");
+require("winston-papertrail").Papertrail;
+
+// file-base64 lets you encode a file in base64; GitHub API requires
+// content pushed to repos be base64 encoded
 const base64 = require("file-base64");
+
+// adm-zip makes working with zip files (which are what artifacts are
+// downloaded as) reasonably easy
 const admZip = require("adm-zip");
+
+// we need to listen for incoming info from the WebApp
 const http = require("http");
+
+// only use this to handle the request for artifact download;
+// I'm not entirely sure this is needed, since we're already using
+// http...but it makes things easier, so sticking with it for now
 const agent = require("superagent");
+
+// used for some file handling on the server
 const fs = require("fs");
+
+// @octokit/app is a library from GitHub that makes working with GitHub Apps
+// a bit easier, particularly the authentication side
 const { App } = require("@octokit/app");
+
+// @octokit/request is a library from GitHub that makes making GitHub
+// API requests a bit easier
 const { request } = require("@octokit/request");
 
-const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
-
+// smee-client hooks up a locally running node app to a smee.io
+// url (which the GitHub App listens to for events)
 const SmeeClient = require("smee-client");
+const { pathToFileURL } = require("url");
 
-const smee = new SmeeClient({
-  source: "https://smee.io/K3cYTyZkl2Ss0RO",
-  target: "http://localhost:3333/events",
-  logger: console,
-});
+/*
 
-const fetch = require("node-fetch");
-const events = smee.start();
+The body of the app.
 
-async function doSomethingWith(run_resp) {
-  console.log("let's do something with");
-  console.log(run_resp.artifacts_url);
-  const trimmed = run_resp.artifacts_url.replace("https://api.github.com", "");
-  console.log("TRIMMED: ", trimmed);
-  let installationAccessToken = await app.getInstallationAccessToken({
-    installationId: 11459311,
+*/
+
+// setup done; let's start the listener
+
+startSmeeConnection();
+
+const logger = createLogger();
+const app = createApp();
+
+http.createServer(handleRequest).listen(3333);
+
+// that's it!!!
+
+// const jwt = app.getSignedJsonWebToken();
+
+/*
+
+All the helpers.
+
+*/
+
+/**
+ * Make a smee client that shunts GitHub webhook
+ * payloads to this locally running node app.
+ */
+function startSmeeConnection() {
+  new SmeeClient({
+    source: process.env.WEBHOOK_PROXY_URL,
+    target: process.env.LOCAL_APP_URL,
+    logger: console,
+  }).start();
+}
+
+/**
+ * I'm currently wanting to log to https://papertrailapp.com/dashboard
+ * I think it's because I feel guilty about using console.log.
+ * This might be stupid.
+ *
+ * Much of this is cut-and-paste from https://github.com/kenperkins/winston-papertrail
+ * Note that the example there is a bit dated; had to change new winston.Logger to
+ * new winston.createLogger
+ */
+function createLogger() {
+  const winstonPapertrail = new winston.transports.Papertrail({
+    host: "logs2.papertrailapp.com", // this is from Settings > Log Destinations on Papertrail site
+    port: 24982,
   });
 
-  const responseFromArtifactRequest = await request(run_resp.artifacts_url, {
-    headers: {
-      authorization: `token ${installationAccessToken}`,
-      accept: "application/vnd.github.machine-man-preview+json",
-    },
+  winstonPapertrail.on("error", function () {
+    // ignore errors?
   });
 
-  console.log("data: ", responseFromArtifactRequest);
-  const archiveDownloadUrl =
-    responseFromArtifactRequest.data.artifacts[0].archive_download_url;
-  console.log("I think this link: ", archiveDownloadUrl);
-
-  installationAccessToken = await app.getInstallationAccessToken({
-    installationId: 11459311,
+  return new winston.createLogger({
+    transports: [
+      winstonPapertrail,
+      new winston.transports.Console({
+        format: winston.format.combine(
+          winston.format.colorize(),
+          winston.format.simple()
+        ),
+      }),
+    ],
   });
-  const link = await request(archiveDownloadUrl, {
-    headers: {
-      authorization: `token ${installationAccessToken}`,
-      accept: "application/vnd.github.v3+json",
-    },
+}
+
+/**
+ * So this "app" is only an object that seems to handle authorization
+ * for the GitHub App being used here; don't get me wrong, I'm grateful...
+ * but the only place where we use this is when we need to generate a token
+ * to do all the requests that are scattered around.
+ *
+ * Shrug.
+ */
+function createApp() {
+  const MY_KEY = fs.readFileSync(
+    ".data/artifactminer.2020-08-26.private-key.pem"
+  );
+
+  return new App({
+    id: process.env.APP_ID,
+    privateKey: MY_KEY,
   });
+}
 
-  const downloadLink = link.url;
-  const fileName = () => {
-    const toParse = link.headers["content-disposition"];
-    const toParseSplit = toParse.split(";");
-    const thisPart = toParseSplit[1].trim();
-    const splitAgain = thisPart.split("=");
-    return splitAgain[1];
-  };
-  console.log("link: ", link);
+/**
+ * Look for submission requests and coming in via
+ * smee and if they happen to be a submission request
+ * coming in, then do all the fun stuff that has to be done.
+ *
+ * @param {*} req
+ * @param {*} response
+ */
+function handleRequest(req, response) {
+  // for non-POST requests show "ok" and stop here
+  if (req.method !== "POST") return response.end("ok");
 
-  const submissionDir = "submissions";
-  const zipfile = fileName();
-  const zipFileInfo = extractedSubmissionInfo(zipfile);
-  const fullPathToZip = `${submissionDir}/${zipfile}`;
+  // each event ferried along by smee has a payload object that
+  // has all the info needed to do the submit
+  let payloadAsText = "";
+  req.on("data", (data) => (payloadAsText += data));
+  req.on("end", () => {
+    const payload = JSON.parse(payloadAsText);
 
-  installationAccessToken = await app.getInstallationAccessToken({
-    installationId: 11459311,
-  });
+    if (isSubmissionRequest()) {
+      processSubmission(payload);
+    }
 
-  const writer = fs.createWriteStream(fullPathToZip);
-  writer.on("finish", () => {
-    console.log("finished writing");
+    response.end("ok");
 
-    encodeIt();
-  });
-
-  await agent
-    .get(downloadLink)
-    .on("error", function (error) {
-      console.log(error);
-    })
-    .pipe(writer);
-
-  console.log("zipfile var is: ", fullPathToZip);
-
-  function encodeIt() {
-    base64.encode(fullPathToZip, function (err, base64String) {
-      pushZipToSubmit(base64String);
-    });
-  }
-
-  function pushSummaryToSubmit() {
-    var theZip = new admZip(fullPathToZip);
-    theZip.readFileAsync("reports/summary-report.txt", function (data, err) {
-      const summaryFileContents = data.toString();
-      request(
-        `PUT /repos/MRU-CSIS-1501-DEV-PLAYGROUND/example-submission-pile/contents/${zipFileInfo.assessment}/${zipFileInfo.studentUsername}/${zipFileInfo.timestamp}/summary-report.txt`,
-        {
-          message: "This submit brought to you by Arty the ArtifactMiner Bot.",
-          content: Buffer.from(summaryFileContents).toString("base64"),
-          headers: {
-            authorization: `token ${installationAccessToken}`,
-            accept: "application/vnd.github.v3+json",
-          },
-        }
+    function isSubmissionRequest() {
+      return (
+        payload.workflow_run &&
+        payload.workflow_run.status == "completed" &&
+        payload.workflow_run.artifacts_url
       );
-    });
-  }
+    }
+  });
+}
 
-  function pushZipToSubmit(contents) {
-    request(
-      `PUT /repos/MRU-CSIS-1501-DEV-PLAYGROUND/example-submission-pile/contents/${zipFileInfo.assessment}/${zipFileInfo.studentUsername}/${zipFileInfo.timestamp}/${zipFileInfo.repo}.zip`,
+/**
+ * Once we have a known submission payload, we want to do these
+ * things:
+ *
+ * - grab the submission artifact, which is a zip file
+ * - save that zip file to the submission repo associated with the organization
+ * - save the text of the summary report to the same submission repo as well
+ *
+ * @param {*} payload
+ */
+async function processSubmission(payload) {
+  const organization = payload.organization.login;
+  const workflowRunId = payload.workflow_run.id;
+  const assignmentRepo = payload.repository.name;
+  const installationId = payload.installation.id;
+  const tokenForThisSubmission = await tokenFor(installationId);
+
+  logger.info(`=== incoming submission: ${assignmentRepo}[${organization}]`);
+
+  const artifactResponse = await responseToArtifactRequest(
+    organization,
+    assignmentRepo,
+    workflowRunId,
+    tokenForThisSubmission
+  );
+
+  // logger.info(
+  //   "requested artifact details, received this response: " +
+  //     JSON.stringify(artifactResponse)
+  // );
+
+  const artifactId = submissionArtifactIdFrom(artifactResponse);
+
+  const downloadResponse = await responseToDownloadRequest(
+    organization,
+    assignmentRepo,
+    tokenForThisSubmission,
+    artifactId
+  );
+
+  // logger.info(
+  //   "requested download details, received this response: " +
+  //     JSON.stringify(downloadResponse)
+  // );
+
+  const artifact = buildArtifactFrom(downloadResponse, organization);
+
+  // logger.info(
+  //   "built this artifact from the download details: " + JSON.stringify(artifact)
+  // );
+
+  saveToDisk(artifact, tokenForThisSubmission);
+}
+
+async function responseToArtifactRequest(organization, repo, id, token) {
+  try {
+    return await request(
+      "GET /repos/{owner}/{repo}/actions/runs/{run_id}/artifacts",
       {
-        message: "This submit brought to you by Arty the ArtifactMiner Bot.",
-        content: contents,
+        owner: organization,
+        repo: repo,
+        run_id: id,
         headers: {
-          authorization: `token ${installationAccessToken}`,
-          accept: "application/vnd.github.v3+json",
+          authorization: `token ${token}`,
+          accept: "application/vnd.github.machine-man-preview+json",
         },
       }
-    ).then(() => {
-      pushSummaryToSubmit();
-    });
+    );
+  } catch (e) {
+    logger.error("could not get an artifact request: " + e);
+    return "Error";
   }
+}
 
-  /*
-  base64.encode(fullPathToZip, function (err, base64String) {
-    request(
-      `PUT /repos/MRU-CSIS-1501-DEV-PLAYGROUND/example-submission-pile/contents/${zipFileInfo.assessment}/${zipfile}`,
+async function responseToDownloadRequest(organization, repo, token, id) {
+  try {
+    return await request(
+      "GET /repos/{owner}/{repo}/actions/artifacts/{artifact_id}/zip",
       {
-        message: "This submit brought to you by Arty the ArtifactMiner Bot.",
-        content: base64String,
+        owner: organization,
+        repo: repo,
+        artifact_id: id,
         headers: {
-          authorization: `token ${installationAccessToken}`,
+          authorization: `token ${token}`,
           accept: "application/vnd.github.v3+json",
         },
       }
     );
-  });
-  */
+  } catch (e) {
+    logger.error("attempt to get download failed: " + e);
+    return "Error";
+  }
 }
-const cert = require("fs").readFileSync(
-  ".data/artifactminer.2020-08-26.private-key.pem"
-);
 
-// const webHookHandler = require("github-webhook-handler")({
-//   path: "/",
-//   secret: cert,
-// });
+/**
+ * You need an installation token to perform all the groovy actions
+ * (getting artifact download urls, writing to repositories, and the like)
+ *
+ * @param {*} payload
+ */
+async function tokenFor(installationId) {
+  return app.getInstallationAccessToken({
+    installationId: installationId,
+  });
+}
 
-const extractedSubmissionInfo = (pathToFile) => {
-  const firstDash = pathToFile.indexOf("-");
-  const timestampIndex = pathToFile.lastIndexOf("_");
-  const githubUsernameIndex = pathToFile.lastIndexOf("-", timestampIndex);
-  const indexOfZipExtension = pathToFile.lastIndexOf(".zip");
+function submissionArtifactIdFrom(artifactResponse) {
+  return artifactResponse.data.artifacts[0].id;
+}
+
+function artifactNameFrom(downloadResponse) {
+  const toParse = downloadResponse.headers["content-disposition"];
+  const toParseSplit = toParse.split(";");
+  const thisPart = toParseSplit[1].trim();
+  const splitAgain = thisPart.split("=");
+  return splitAgain[1];
+}
+
+function extractDetailsFrom(name) {
+  const firstDash = name.indexOf("-");
+  const timestampIndex = name.lastIndexOf("_");
+  const githubUsernameIndex = name.lastIndexOf("-", timestampIndex);
+  const indexOfZipExtension = name.lastIndexOf(".zip");
 
   return {
-    studentUsername: pathToFile.substring(0, firstDash),
-    assessment: pathToFile.substring(firstDash + 1, githubUsernameIndex),
-    repo: pathToFile.substring(firstDash + 1, timestampIndex),
-    timestamp: pathToFile.substring(timestampIndex + 1, indexOfZipExtension),
+    studentUsername: name.substring(0, firstDash).toLowerCase(),
+    assessment: name.substring(firstDash + 1, githubUsernameIndex),
+    repo: name.substring(firstDash + 1, timestampIndex),
+    timestamp: name.substring(timestampIndex + 1, indexOfZipExtension),
   };
-};
+}
 
-const res = extractedSubmissionInfo(
-  "jpratt123-friend-list-blunxy_2020-09-01T10-47.zip"
-);
+function buildArtifactFrom(downloadResponse, organization) {
+  const artifactName = artifactNameFrom(downloadResponse);
+  const details = extractDetailsFrom(artifactName);
 
-const app = new App({
-  id: process.env.APP_ID,
-  privateKey: cert,
-});
+  return {
+    url: downloadResponse.url,
+    organization: organization,
+    name: artifactName,
+    assessment: details.assessment,
+    studentUsername: details.studentUsername,
+    timestamp: details.timestamp,
+    repo: details.repo,
+  };
+}
 
-// const app = require("github-app")({
-//   id: process.env.APP_ID,
-//   cert: require("fs").readFileSync(
-//     ".data/artifactminer.2020-08-26.private-key.pem"
-//   ),
-// });
+async function saveToDisk(artifact, token) {
+  const submissionDir = "submissions";
+  const fullPathToZip = `${submissionDir}/${artifact.name}`;
 
-const jwt = app.getSignedJsonWebToken();
-console.log("jwt: ", jwt);
-
-http.createServer(handleRequest).listen(3333);
-
-function handleRequest(req, response) {
-  // log request method & URL
-  console.log(`${req.method} ${req.url}`);
-
-  // for GET (and other non-POST) requests show "ok" and stop here
-  if (req.method !== "POST") return response.end("ok");
-
-  // for POST requests, read out the request body, log it, then show "ok" as response
-  let payload = "";
-  req.on("data", (data) => (payload += data));
-  req.on("end", () => {
-    const payloadAsObj = JSON.parse(payload);
-
-    if (
-      payloadAsObj.workflow_run &&
-      payloadAsObj.workflow_run.status == "completed" &&
-      payloadAsObj.workflow_run.artifacts_url
-    ) {
-      doSomethingWith(payloadAsObj.workflow_run);
-    }
-
-    response.end("ok");
+  const writer = fs.createWriteStream(fullPathToZip);
+  writer.on("finish", () => {
+    encodeIt(fullPathToZip, artifact, token);
   });
 
-  //webHookHandler(request, response, () => response.end("ok"));
+  agent
+    .get(artifact.url)
+    .on("error", function (error) {
+      logger.error("error saving to disk: " + error);
+    })
+    .pipe(writer);
+}
+
+function encodeIt(fullPathToZip, artifact, token) {
+  base64.encode(fullPathToZip, function (err, base64String) {
+    pushZipToSubmit(base64String, artifact, token, fullPathToZip);
+  });
+}
+
+function pushZipToSubmit(contents, artifact, token, fullPathToZip) {
+  request(
+    `PUT /repos/${artifact.organization}/submissions/contents/${artifact.assessment}/${artifact.studentUsername}/${artifact.timestamp}/${artifact.repo}.zip`,
+    {
+      message: "This submit brought to you by Arty the ArtifactMiner Bot.",
+      content: contents,
+      headers: {
+        authorization: `token ${token}`,
+        accept: "application/vnd.github.v3+json",
+      },
+    }
+  ).then(() => {
+    pushSummaryToSubmit(fullPathToZip, artifact, token);
+  });
+}
+
+function pushSummaryToSubmit(fullPathToZip, artifact, token) {
+  var theZip = new admZip(fullPathToZip);
+  theZip.readFileAsync("reports/summary-report.txt", function (data) {
+    const summaryFileContents = data.toString();
+    request(
+      `PUT /repos/${artifact.organization}/submissions/contents/${artifact.assessment}/${artifact.studentUsername}/${artifact.timestamp}/summary-report.txt`,
+      {
+        message: "This submit brought to you by Arty the ArtifactMiner Bot.",
+        content: Buffer.from(summaryFileContents).toString("base64"),
+        headers: {
+          authorization: `token ${token}`,
+          accept: "application/vnd.github.v3+json",
+        },
+      }
+    ).then(deleteArtifactOnServer(artifact, fullPathToZip));
+  });
+}
+
+function deleteArtifactOnServer(artifact, fullPathToZip) {
+  fs.unlink(fullPathToZip, (err) => {
+    if (err) {
+      logger.error(`couldn't delete ${fullPathToZip} on server`);
+      return;
+    } else {
+      logger.info(`=== submission completed for ${artifact.repo}`);
+    }
+  });
 }

@@ -20,7 +20,7 @@
   "dependencies": {
     "@octokit/app": "^4.2.1",
     "@octokit/core": "^3.1.2",
-    "@octokit/rest": "^18.0.3",
+    "@octokit/rest": "^18.0.4",
     "adm-zip": "^0.4.16",
     "dotenv": "^8.2.0",
     "file-base64": "^1.0.0",
@@ -28,11 +28,17 @@
     "github-webhook-handler": "^1.0.0",
     "jszip": "^3.5.0",
     "node-fetch": "^2.6.0",
-    "superagent": "^6.0.0"
+    "superagent": "^6.1.0",
+    "winston": "^3.3.3",
+    "winston-papertrail": "^1.0.5"
   },
   "devDependencies": {
     "nodemon": "^2.0.0",
-    "smee-client": "^1.1.0"
+    "smee-client": "^1.1.0",
+    "eslint": "^7.4.0",
+    "eslint-config-prettier": "^6.11.0",
+    "eslint-plugin-import": "^2.22.0",
+    "prettier": "^2.1.1"
   },
   "engines": {
     "node": ">= 8.3.0"
