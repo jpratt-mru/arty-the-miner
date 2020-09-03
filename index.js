@@ -49,7 +49,7 @@ The body of the app.
 
 */
 
-startSmeeConnection();
+// startSmeeConnection();
 
 const logger = createLogger();
 const app = createApp();
