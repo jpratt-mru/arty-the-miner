@@ -10,8 +10,7 @@ IMPORTS
 require("dotenv").config();
 
 // logging is good
-const winston = require("winston");
-require("winston-papertrail").Papertrail;
+const { createLogger } = require("./MyLogger");
 
 // file-base64 lets you encode a file in base64; GitHub API requires
 // content pushed to repos be base64 encoded
@@ -42,16 +41,13 @@ const { request } = require("@octokit/request");
 
 // smee-client hooks up a locally running node app to a smee.io
 // url (which the GitHub App listens to for events)
-const SmeeClient = require("smee-client");
-const { pathToFileURL } = require("url");
+const { startSmeeConnection } = require("./SmeeConnection");
 
 /*
 
 The body of the app.
 
 */
-
-// setup done; let's start the listener
 
 startSmeeConnection();
 
@@ -60,59 +56,11 @@ const app = createApp();
 
 http.createServer(handleRequest).listen(3333);
 
-// that's it!!!
-
-// const jwt = app.getSignedJsonWebToken();
-
 /*
 
 All the helpers.
 
 */
-
-/**
- * Make a smee client that shunts GitHub webhook
- * payloads to this locally running node app.
- */
-function startSmeeConnection() {
-  new SmeeClient({
-    source: process.env.WEBHOOK_PROXY_URL,
-    target: process.env.LOCAL_APP_URL,
-    logger: console,
-  }).start();
-}
-
-/**
- * I'm currently wanting to log to https://papertrailapp.com/dashboard
- * I think it's because I feel guilty about using console.log.
- * This might be stupid.
- *
- * Much of this is cut-and-paste from https://github.com/kenperkins/winston-papertrail
- * Note that the example there is a bit dated; had to change new winston.Logger to
- * new winston.createLogger
- */
-function createLogger() {
-  const winstonPapertrail = new winston.transports.Papertrail({
-    host: "logs2.papertrailapp.com", // this is from Settings > Log Destinations on Papertrail site
-    port: 24982,
-  });
-
-  winstonPapertrail.on("error", function () {
-    // ignore errors?
-  });
-
-  return new winston.createLogger({
-    transports: [
-      winstonPapertrail,
-      new winston.transports.Console({
-        format: winston.format.combine(
-          winston.format.colorize(),
-          winston.format.simple()
-        ),
-      }),
-    ],
-  });
-}
 
 /**
  * So this "app" is only an object that seems to handle authorization
@@ -172,9 +120,13 @@ function handleRequest(req, response) {
  * Once we have a known submission payload, we want to do these
  * things:
  *
- * - grab the submission artifact, which is a zip file
- * - save that zip file to the submission repo associated with the organization
- * - save the text of the summary report to the same submission repo as well
+ * - find out the id of the artifact that was part of the submission, then
+ * - use that id to download the actual artifact (which is a zip file), then
+ * - initiate the remaining process steps:
+ *   - save the zip file temporarily to disk, after which we...
+ *   - ...send that zip file to the submission repository, after which we...
+ *   - ...send the contents of the summary report (which is in the zip file) to the submission repo, after which we...
+ *   - ...delete the now unneeded zip file and report success.
  *
  * @param {*} payload
  */
@@ -204,8 +156,8 @@ async function processSubmission(payload) {
   const downloadResponse = await responseToDownloadRequest(
     organization,
     assignmentRepo,
-    tokenForThisSubmission,
-    artifactId
+    artifactId,
+    tokenForThisSubmission
   );
 
   // logger.info(
@@ -242,7 +194,7 @@ async function responseToArtifactRequest(organization, repo, id, token) {
   }
 }
 
-async function responseToDownloadRequest(organization, repo, token, id) {
+async function responseToDownloadRequest(organization, repo, id, token) {
   try {
     return await request(
       "GET /repos/{owner}/{repo}/actions/artifacts/{artifact_id}/zip",
