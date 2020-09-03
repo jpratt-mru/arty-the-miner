@@ -54,7 +54,7 @@ The body of the app.
 const logger = createLogger();
 const app = createApp();
 
-http.createServer(handleRequest).listen(3333);
+http.createServer(handleRequest).listen(process.env.PORT);
 
 /*
 
