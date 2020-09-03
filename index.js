@@ -41,7 +41,7 @@ const { request } = require("@octokit/request");
 
 // smee-client hooks up a locally running node app to a smee.io
 // url (which the GitHub App listens to for events)
-const { startSmeeConnection } = require("./SmeeConnection");
+// const { startSmeeConnection } = require("./SmeeConnection");
 
 /*
 
