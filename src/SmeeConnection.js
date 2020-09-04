@@ -1,3 +1,7 @@
+/**
+ * This is only here for when you're putzing around on a dev box.
+ */
+
 const SmeeClient = require("smee-client");
 
 /**

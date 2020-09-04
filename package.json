@@ -31,7 +31,7 @@
     "node-fetch": "^2.6.0",
     "superagent": "^6.1.0",
     "winston": "^3.3.3",
-    "winston-papertrail": "^1.0.5"
+    "winston-papertrail": "git+https://github.com/kenperkins/winston-papertrail.git#v2"
   },
   "devDependencies": {
     "nodemon": "^2.0.0",
