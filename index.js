@@ -10,7 +10,7 @@ IMPORTS
 require("dotenv").config();
 
 // logging is good
-const { createLogger } = require("./MyLogger");
+const { createLogger } = require("./src/MyLogger");
 
 // file-base64 lets you encode a file in base64; GitHub API requires
 // content pushed to repos be base64 encoded
@@ -37,11 +37,11 @@ const { App } = require("@octokit/app");
 
 // @octokit/request is a library from GitHub that makes making GitHub
 // API requests a bit easier
-const { request } = require("@octokit/request");
+let { request } = require("@octokit/request");
 
 // smee-client hooks up a locally running node app to a smee.io
 // url (which the GitHub App listens to for events)
-const { startSmeeConnection } = require("./SmeeConnection");
+const { startSmeeConnection } = require("./src/SmeeConnection");
 
 /*
 
@@ -101,7 +101,7 @@ function handleRequest(req, response) {
     const payload = JSON.parse(payloadAsText);
 
     if (isSubmissionRequest()) {
-      processSubmission(payload);
+      processSubmissionFrom(payload);
     }
 
     response.end("ok");
@@ -130,7 +130,7 @@ function handleRequest(req, response) {
  *
  * @param {*} payload
  */
-async function processSubmission(payload) {
+async function processSubmissionFrom(payload) {
   const organization = payload.organization.login;
   const workflowRunId = payload.workflow_run.id;
   const assignmentRepo = payload.repository.name;
@@ -139,11 +139,17 @@ async function processSubmission(payload) {
 
   logger.info(`=== incoming submission: ${assignmentRepo}[${organization}]`);
 
+  request = request.defaults({
+    headers: {
+      authorization: `token ${tokenForThisSubmission}`,
+      accept: "application/vnd.github.v3+json",
+    },
+  });
+
   const artifactResponse = await responseToArtifactRequest(
     organization,
     assignmentRepo,
-    workflowRunId,
-    tokenForThisSubmission
+    workflowRunId
   );
 
   // logger.info(
@@ -156,8 +162,7 @@ async function processSubmission(payload) {
   const downloadResponse = await responseToDownloadRequest(
     organization,
     assignmentRepo,
-    artifactId,
-    tokenForThisSubmission
+    artifactId
   );
 
   // logger.info(
@@ -171,10 +176,10 @@ async function processSubmission(payload) {
   //   "built this artifact from the download details: " + JSON.stringify(artifact)
   // );
 
-  saveToDisk(artifact, tokenForThisSubmission);
+  saveToDisk(artifact);
 }
 
-async function responseToArtifactRequest(organization, repo, id, token) {
+async function responseToArtifactRequest(organization, repo, id) {
   try {
     return await request(
       "GET /repos/{owner}/{repo}/actions/runs/{run_id}/artifacts",
@@ -183,7 +188,6 @@ async function responseToArtifactRequest(organization, repo, id, token) {
         repo: repo,
         run_id: id,
         headers: {
-          authorization: `token ${token}`,
           accept: "application/vnd.github.machine-man-preview+json",
         },
       }
@@ -194,7 +198,7 @@ async function responseToArtifactRequest(organization, repo, id, token) {
   }
 }
 
-async function responseToDownloadRequest(organization, repo, id, token) {
+async function responseToDownloadRequest(organization, repo, id) {
   try {
     return await request(
       "GET /repos/{owner}/{repo}/actions/artifacts/{artifact_id}/zip",
@@ -202,10 +206,6 @@ async function responseToDownloadRequest(organization, repo, id, token) {
         owner: organization,
         repo: repo,
         artifact_id: id,
-        headers: {
-          authorization: `token ${token}`,
-          accept: "application/vnd.github.v3+json",
-        },
       }
     );
   } catch (e) {
@@ -267,13 +267,13 @@ function buildArtifactFrom(downloadResponse, organization) {
   };
 }
 
-async function saveToDisk(artifact, token) {
+async function saveToDisk(artifact) {
   const submissionDir = "submissions";
   const fullPathToZip = `${submissionDir}/${artifact.name}`;
 
   const writer = fs.createWriteStream(fullPathToZip);
   writer.on("finish", () => {
-    encodeIt(fullPathToZip, artifact, token);
+    encodeIt(fullPathToZip, artifact);
   });
 
   agent
@@ -284,29 +284,25 @@ async function saveToDisk(artifact, token) {
     .pipe(writer);
 }
 
-function encodeIt(fullPathToZip, artifact, token) {
+function encodeIt(fullPathToZip, artifact) {
   base64.encode(fullPathToZip, function (err, base64String) {
-    pushZipToSubmit(base64String, artifact, token, fullPathToZip);
+    pushZipToSubmit(base64String, artifact, fullPathToZip);
   });
 }
 
-function pushZipToSubmit(contents, artifact, token, fullPathToZip) {
+function pushZipToSubmit(contents, artifact, fullPathToZip) {
   request(
     `PUT /repos/${artifact.organization}/submissions/contents/${artifact.assessment}/${artifact.studentUsername}/${artifact.timestamp}/${artifact.repo}.zip`,
     {
       message: "This submit brought to you by Arty the ArtifactMiner Bot.",
       content: contents,
-      headers: {
-        authorization: `token ${token}`,
-        accept: "application/vnd.github.v3+json",
-      },
     }
   ).then(() => {
-    pushSummaryToSubmit(fullPathToZip, artifact, token);
+    pushSummaryToSubmit(fullPathToZip, artifact);
   });
 }
 
-function pushSummaryToSubmit(fullPathToZip, artifact, token) {
+function pushSummaryToSubmit(fullPathToZip, artifact) {
   var theZip = new admZip(fullPathToZip);
   theZip.readFileAsync("reports/summary-report.txt", function (data) {
     const summaryFileContents = data.toString();
@@ -315,10 +311,6 @@ function pushSummaryToSubmit(fullPathToZip, artifact, token) {
       {
         message: "This submit brought to you by Arty the ArtifactMiner Bot.",
         content: Buffer.from(summaryFileContents).toString("base64"),
-        headers: {
-          authorization: `token ${token}`,
-          accept: "application/vnd.github.v3+json",
-        },
       }
     ).then(deleteArtifactOnServer(artifact, fullPathToZip));
   });
