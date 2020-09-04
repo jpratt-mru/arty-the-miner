@@ -1,3 +1,9 @@
+/**
+ *
+ *
+ *
+ */
+
 require("dotenv").config();
 const Requester = require("./Requester");
 const { buildArtifactDetailsFrom } = require("./ArtifactDetails");
@@ -47,7 +53,7 @@ class SubmissionPayloadReactor {
     );
 
     const artifactRequestResponse = await requester
-      .encodedZipFileFor(organization, repo, workflowRunId)
+      .requestFirstArtifact(organization, repo, workflowRunId)
       .catch((err) => this.logger.error(err));
 
     const artifactDetails = buildArtifactDetailsFrom(
