@@ -33,9 +33,13 @@ const { startSmeeConnection } = require("./src/SmeeConnection");
 // to certain payloads...in this case, submission payloads
 const { buildReacterFrom } = require("./src/PayloadReacterBuilder");
 
-startSmeeConnection();
-
 const logger = createLogger();
+
+if (process.env.NODE_ENV === "development") {
+  logger.info("running in development mode...");
+  logger.info("connecting to Smee");
+  startSmeeConnection();
+}
 
 http.createServer(handleRequest).listen(process.env.PORT);
 

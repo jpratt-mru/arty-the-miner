@@ -1,7 +1,8 @@
 /**
  * This is only here for when you're putzing around on a dev box.
+ * Here's a hack that does makes SmeeClient a stub (or is it a fake?)
+ * by default, but if we're in development, uses the "real" SmeeClient.
  */
-
 const SmeeClient = require("smee-client");
 
 /**
