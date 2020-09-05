@@ -63,6 +63,6 @@ function handleRequest(req, response) {
   req.on("data", (data) => (payloadText += data));
   req.on("end", () => {
     buildReacterFrom(payloadText, logger).react();
-    response.end("ok");
+    response.end("Arty says hi!");
   });
 }
