@@ -89,10 +89,12 @@ class SubmissionPayloadReactor {
       .catch((err) => this.logger.error(err));
 
     await deleteLocalSubmission(pathToZip)
-      .then(
-        this.logger.info(`deleted local ${pathToZip}`)
-        this.logger.info(`=== submission completed for ${artifactDetails.repo}`)
-      )
+      .then(() => {
+        this.logger.info(`deleted local ${pathToZip}`);
+        this.logger.info(
+          `=== submission completed for ${artifactDetails.repo}`
+        );
+      })
       .catch((err) => this.logger.error(err));
   }
 }
