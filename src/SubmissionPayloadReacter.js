@@ -71,12 +71,12 @@ class SubmissionPayloadReactor {
     const pathToZip = `submissions/${artifactDetails.name}`;
 
     await saveLocalSubmission(pathToZip, Buffer.from(zipData))
-      .then(this.logger.info("wrote file"))
+      .then(this.logger.info(`wrote local ${pathToZip}`))
       .catch((err) => this.logger.error(err));
 
     await requester
       .requestZipUpload(zipData, artifactDetails)
-      .then(this.logger.info("uploaded zip"))
+      .then(this.logger.info(`uploaded zip ${artifactDetails.name}`))
       .catch((err) => this.logger.error(err));
 
     let summaryContents = await summaryContentsFrom(pathToZip).catch((err) =>
@@ -85,11 +85,12 @@ class SubmissionPayloadReactor {
 
     await requester
       .requestSummaryUpload(summaryContents, artifactDetails)
-      .then(this.logger.info("uploaded summary"))
+      .then(this.logger.info(`uploaded summary from ${artifactDetails.name}`))
       .catch((err) => this.logger.error(err));
 
     await deleteLocalSubmission(pathToZip)
       .then(
+        this.logger.info(`deleted local ${pathToZip}`)
         this.logger.info(`=== submission completed for ${artifactDetails.repo}`)
       )
       .catch((err) => this.logger.error(err));
