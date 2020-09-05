@@ -27,7 +27,10 @@ const http = require("http");
 // smee-client hooks up a locally running node app to a smee.io
 // url (which the GitHub App listens to for events)
 // NOTE: this is only used during development, not production!
-const { startSmeeConnection } = require("./src/SmeeConnection");
+const { startSmeeConnection } =
+  process.env.NODE_ENV === "production"
+    ? { function() {} }
+    : require("./src/SmeeConnection");
 
 // this is a factory that lets us create things that react
 // to certain payloads...in this case, submission payloads
