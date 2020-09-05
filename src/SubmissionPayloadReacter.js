@@ -54,7 +54,11 @@ class SubmissionPayloadReactor {
 
     const artifactRequestResponse = await requester
       .requestFirstArtifact(organization, repo, workflowRunId)
-      .catch((err) => this.logger.error(err));
+      .catch((err) =>
+        this.logger.error(
+          `@@ ARTY ERROR @@ :: (requestFirstArtifact) :: ${err}`
+        )
+      );
 
     const artifactDetails = buildArtifactDetailsFrom(
       artifactRequestResponse,
@@ -64,7 +68,9 @@ class SubmissionPayloadReactor {
     let zipData = artifactRequestResponse.data;
 
     if (!zipData) {
-      this.logger.error("couldn't get zip file  from submission...stopping.");
+      this.logger.error(
+        "@@ ARTY ERROR @@ :: couldn't get zip file  from submission...stopping."
+      );
       return;
     }
 
@@ -72,21 +78,29 @@ class SubmissionPayloadReactor {
 
     await saveLocalSubmission(pathToZip, Buffer.from(zipData))
       .then(this.logger.info(`wrote local ${pathToZip}`))
-      .catch((err) => this.logger.error(err));
+      .catch((err) =>
+        this.logger.error(`@@ ARTY ERROR @@ :: (saveLocalSubmission) :: ${err}`)
+      );
 
     await requester
       .requestZipUpload(zipData, artifactDetails)
       .then(this.logger.info(`uploaded zip ${artifactDetails.name}`))
-      .catch((err) => this.logger.error(err));
+      .catch((err) =>
+        this.logger.error(`@@ ARTY ERROR @@ :: (requestZipUpload) :: ${err}`)
+      );
 
     let summaryContents = await summaryContentsFrom(pathToZip).catch((err) =>
-      this.logger.error(err)
+      this.logger.error(`@@ ARTY ERROR @@ :: (summaryContentsFrom) :: ${err}`)
     );
 
     await requester
       .requestSummaryUpload(summaryContents, artifactDetails)
       .then(this.logger.info(`uploaded summary from ${artifactDetails.name}`))
-      .catch((err) => this.logger.error(err));
+      .catch((err) =>
+        this.logger.error(
+          `@@ ARTY ERROR @@ :: (requestSummaryUpload) :: ${err}`
+        )
+      );
 
     await deleteLocalSubmission(pathToZip)
       .then(() => {
@@ -95,7 +109,11 @@ class SubmissionPayloadReactor {
           `=== submission completed for ${artifactDetails.repo}`
         );
       })
-      .catch((err) => this.logger.error(err));
+      .catch((err) =>
+        this.logger.error(
+          `@@ ARTY ERROR @@ :: (deleteLocalSubmission) :: ${err}`
+        )
+      );
   }
 }
 
