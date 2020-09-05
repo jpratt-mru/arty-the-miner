@@ -1,6 +1,11 @@
 /**
  *
+ * This is where the "real work" gets done.
  *
+ * This reacter is what actually makes the requests via the GitHub API
+ * to grab the artifact (submission zip) and commit it to the
+ * submissions repo in the organization where GitHub Assignments
+ * are being submitted.
  *
  */
 
@@ -14,7 +19,7 @@ const saveLocalSubmission = util.promisify(fs.writeFile);
 const deleteLocalSubmission = util.promisify(fs.unlink);
 const { summaryContentsFrom } = require("./SummaryExtractor");
 
-class SubmissionPayloadReactor {
+class SubmissionPayloadReacter {
   constructor(payload, logger) {
     this.payload = payload;
     this.logger = logger;
@@ -24,13 +29,16 @@ class SubmissionPayloadReactor {
    * Once we have a known submission this.payload, we want to do these
    * things:
    *
-   * - find out the id of the artifact that was part of the submission, then
-   * - use that id to download the actual artifact (which is a zip file), then
-   * - initiate the remaining process steps:
-   *   - save the zip file temporarily to disk, after which we...
+   * - create a Requester to handle the creation of authorized requests for the
+   *   rest of the work that has to be done next
+   * - request the first artifact from the workflow that just completed; this request
+   *   gets us both the artifact (zip file) itself, as well as the _name_ of that
+   *   artifact, which we need for further steps
+   * - save the zip file temporarily to disk, after which we...
    *   - ...send that zip file to the submission repository, after which we...
    *   - ...send the contents of the summary report (which is in the zip file) to the submission repo, after which we...
-   *   - ...delete the now unneeded zip file and report success.
+   *   - ...delete the now unneeded zip file and then finally...
+   *   - ...we report success.
    *
    * @param {*} this.payload
    */
@@ -42,6 +50,18 @@ class SubmissionPayloadReactor {
 
     this.logger.info(`=== incoming submission: ${repo}[${organization}]`);
 
+    // if there's a private key available from process.env - the *real* one,
+    // not the dotenv library one - then we use that; otherwise, we're
+    // going to pull in the key from the pem file.active
+    //
+    // I *would* have just put the key into the .env file and used the dotenv
+    // library, but there are issues with that library and multi-line strings
+    //
+    // since this file shouldn't be punted to GitHub, I've put it in
+    // the .gitignore and punted a copy to my work Google Drive (development-files)
+    // folder. Yes, I know there are other ways to secure things, but I'm kinda
+    // done on this sucker for a while! :)
+    //
     const PRIVATE_KEY =
       process.env.PRIVATE_KEY ||
       fs.readFileSync(".data/artifactminer.2020-08-26.private-key.pem");
@@ -117,4 +137,4 @@ class SubmissionPayloadReactor {
   }
 }
 
-module.exports = SubmissionPayloadReactor;
+module.exports = SubmissionPayloadReacter;
