@@ -46,7 +46,7 @@ function buildArtifactDetailsFrom(downloadResponse, organization) {
     activityid: 'b0a9c0c4-5b3b-4536-83e9-5ab72899b073',
     'cache-control': 'no-store,no-cache',
     connection: 'close',
-    'content-disposition': "attachment; filename=foo-friend-list-blunxy_2020-09-04T13-04.zip; filename*=UTF-8''foo-friend-list-blunxy_2020-09-04T13-04.zip",
+    'content-disposition': "attachment; filename=foo-friend-list_-blunxy_2020-09-04T13-04.zip; filename*=UTF-8''foo-friend-list-blunxy_2020-09-04T13-04.zip",
     'content-type': 'application/zip'
     ....
  *
@@ -70,21 +70,29 @@ function artifactNameFrom(downloadResponse) {
  * A zip file has these parts: [student username]-[assessment name]-[github username]_[timestamp].zip
  * Note that the assessment name likely has further dashes in it.
  *
- * Here's an example zip file name: flunxy123-friend-list-blunxy_2020-09-04T09-18.zip
+ * Here's an example zip file name: flunxy123_friend-list_-blunxy_2020-09-04T09-18.zip
  * Note how the underscore separates the timestamp from the user/repo part.
  *
  * @param {*} artifactFileName
  */
 function extractDetailsFrom(artifactFileName) {
-  const firstDash = artifactFileName.indexOf("-");
+  const firstUnderscore = artifactFileName.indexOf("_");
   const timestampIndex = artifactFileName.lastIndexOf("_");
-  const githubUsernameIndex = artifactFileName.lastIndexOf("-", timestampIndex);
+  const githubUsernameIndex = artifactFileName.lastIndexOf(
+    "_-",
+    timestampIndex
+  );
   const indexOfZipExtension = artifactFileName.lastIndexOf(".zip");
 
   return {
-    studentUsername: artifactFileName.substring(0, firstDash).toLowerCase(),
-    assessment: artifactFileName.substring(firstDash + 1, githubUsernameIndex),
-    repo: artifactFileName.substring(firstDash + 1, timestampIndex),
+    studentUsername: artifactFileName
+      .substring(0, firstUnderscore)
+      .toLowerCase(),
+    assessment: artifactFileName.substring(
+      firstUnderscore + 1,
+      githubUsernameIndex
+    ),
+    repo: artifactFileName.substring(firstUnderscore + 1, timestampIndex),
     timestamp: artifactFileName.substring(
       timestampIndex + 1,
       indexOfZipExtension
