@@ -76,7 +76,7 @@ class SubmissionPayloadReacter {
       .requestFirstArtifact(organization, repo, workflowRunId)
       .catch((err) =>
         this.logger.error(
-          `@@ ARTY ERROR @@ :: (requestFirstArtifact) :: ${err}`
+          `@@ ARTY ERROR @@ :: (requestFirstArtifact) :: ${repo} :: ${err}`
         )
       );
 
@@ -89,7 +89,7 @@ class SubmissionPayloadReacter {
 
     if (!zipData) {
       this.logger.error(
-        "@@ ARTY ERROR @@ :: couldn't get zip file  from submission...stopping."
+        `@@ ARTY ERROR @@ :: couldn't get zip file from submission...stopping.`
       );
       return;
     }
