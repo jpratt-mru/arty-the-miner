@@ -10,7 +10,7 @@
  * the Webhook URL is pointing to https://smee.io/K3cYTyZkl2Ss0RO
  *
  * Likewise, if you're running this code on a production box, that same
- * URL should be whatever the box's settings are.
+ * URL should be whatever the box's settings are. https://arty-the-miner.herokuapp.com/
  *
  * I'm currently logging to both console and to Papertrail.
  */
